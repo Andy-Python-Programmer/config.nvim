@@ -283,11 +283,9 @@ require('lazy').setup({
       },
     },
   },
-
   {
     'github/copilot.vim',
   },
-
   {
     'pmizio/typescript-tools.nvim',
     dependencies = { 'nvim-lua/plenary.nvim', 'neovim/nvim-lspconfig' },
@@ -307,7 +305,30 @@ require('lazy').setup({
       },
     },
   },
-
+  {
+    'ThePrimeagen/harpoon',
+    branch = 'harpoon2',
+    dependencies = { 'nvim-lua/plenary.nvim' },
+    config = function()
+      local harpoon = require 'harpoon'
+      harpoon:setup()
+      vim.keymap.set('n', '<leader>ha', function()
+        harpoon:list():add()
+      end, { desc = '[H]arpoon [A]dd current file' })
+      vim.keymap.set('n', '<leader>h', function()
+        harpoon.ui:toggle_quick_menu(harpoon:list())
+      end, { desc = '[H]arpoon Menu' })
+      function nmap(key, n)
+        vim.keymap.set('n', key, function()
+          harpoon:list():select(n)
+        end)
+      end
+      nmap('<A-j>', 1)
+      nmap('<A-k>', 2)
+      nmap('<A-l>', 3)
+      nmap('<A-;>', 4)
+    end,
+  },
   -- NOTE: Plugins can also be configured to run Lua code when they are loaded.
   --
   -- This is often very useful to both group configuration, as well as handle
