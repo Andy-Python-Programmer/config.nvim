@@ -284,25 +284,6 @@ require('lazy').setup({
     },
   },
   {
-    'pmizio/typescript-tools.nvim',
-    dependencies = { 'nvim-lua/plenary.nvim', 'neovim/nvim-lspconfig' },
-    opts = {
-      settings = {
-        tsserver_file_preferences = {
-          includeInlayParameterNameHints = 'all',
-          includeInlayParameterNameHintsWhenArgumentMatchesName = true,
-          includeInlayFunctionParameterTypeHints = true,
-          includeInlayVariableTypeHints = true,
-          includeInlayVariableTypeHintsWhenTypeMatchesName = true,
-          includeInlayPropertyDeclarationTypeHints = true,
-          includeInlayFunctionLikeReturnTypeHints = true,
-          includeInlayEnumMemberValueHints = true,
-          quotePreference = 'auto',
-        },
-      },
-    },
-  },
-  {
     'ThePrimeagen/harpoon',
     branch = 'harpoon2',
     dependencies = { 'nvim-lua/plenary.nvim' },
@@ -743,7 +724,7 @@ require('lazy').setup({
 
       require('mason-lspconfig').setup {
         ensure_installed = {}, -- explicitly set to an empty table (Kickstart populates installs via mason-tool-installer)
-        automatic_enable = false, -- Only enable servers that are explicitly configured above
+        automatic_enable = true, -- Only enable servers that are explicitly configured above
         automatic_installation = false,
         handlers = {
           function(server_name)
@@ -773,6 +754,14 @@ require('lazy').setup({
         desc = '[F]ormat buffer',
       },
     },
+    config = function()
+      require('conform').setup {
+        format_on_save = {
+          timeout_ms = 500,
+          lsp_format = 'fallback',
+        },
+      }
+    end,
     opts = {
       notify_on_error = false,
       format_on_save = function(bufnr)
@@ -905,13 +894,16 @@ require('lazy').setup({
     -- change the command in the config to whatever the name of that colorscheme is.
     --
     -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-    'ellisonleao/gruvbox.nvim',
+    'navarasu/onedark.nvim',
     priority = 1000, -- Make sure to load this before all the other start plugins.
     config = function()
       -- Load the colorscheme here.
       -- Like many other themes, this one has different styles, and you could load
       -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-      vim.cmd.colorscheme 'gruvbox'
+      require('onedark').setup {
+        style = 'warm',
+      }
+      vim.cmd.colorscheme 'onedark'
     end,
   },
 
