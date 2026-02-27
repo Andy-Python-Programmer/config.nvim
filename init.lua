@@ -1,25 +1,4 @@
 --[[
-
-=====================================================================
-==================== READ THIS BEFORE CONTINUING ====================
-=====================================================================
-========                                    .-----.          ========
-========         .----------------------.   | === |          ========
-========         |.-""""""""""""""""""-.|   |-----|          ========
-========         ||                    ||   | === |          ========
-========         ||   KICKSTART.NVIM   ||   |-----|          ========
-========         ||                    ||   | === |          ========
-========         ||                    ||   |-----|          ========
-========         ||:Tutor              ||   |:::::|          ========
-========         |'-..................-'|   |____o|          ========
-========         `"")----------------(""`   ___________      ========
-========        /::::::::::|  |::::::::::\  \ no mouse \     ========
-========       /:::========|  |==hjkl==:::\  \ required \    ========
-========      '""""""""""""'  '""""""""""""'  '""""""""""'   ========
-========                                                     ========
-=====================================================================
-=====================================================================
-
 What is Kickstart?
 
   Kickstart.nvim is *not* a distribution.
@@ -83,6 +62,21 @@ I hope you enjoy your Neovim journey,
 
 P.S. You can delete this when you're done too. It's your config now! :)
 --]]
+
+local function load_config(prefix, file)
+  local cwd = vim.fn.getcwd()
+  if vim.startswith(cwd, vim.fn.expand(prefix)) then
+    local chunk, err = loadfile(vim.fn.expand(file))
+    if err or not chunk then error('failed to load config: ' .. err) end
+    local settings = chunk()
+    if type(settings) == 'table' then
+      return settings
+    else
+      error('invalid config: ' .. file)
+    end
+  end
+  return {}
+end
 
 -- Set <space> as the leader key
 -- See `:help mapleader`
@@ -163,10 +157,6 @@ vim.o.scrolloff = 10
 -- See `:help 'confirm'`
 vim.o.confirm = true
 
--- fallback if 'NMAC427/guess-indent' failed to guess
-vim.o.expandtab = true
-vim.o.shiftwidth = 4
-
 -- [[ Basic Keymaps ]]
 --  See `:help vim.keymap.set()`
 
@@ -180,11 +170,12 @@ vim.diagnostic.config {
   update_in_insert = false,
   severity_sort = true,
   float = { border = 'rounded', source = 'if_many' },
-  underline = { severity = vim.diagnostic.severity.ERROR },
+  -- See https://github.com/neovim/neovim/issues/26796
+  underline = { severity = vim.diagnostic.severity.HINT },
 
   -- Can switch between these as you prefer
   virtual_text = true, -- Text shows up at the end of the line
-  virtual_lines = false, -- Teest shows up underneath the line, with virtual lines
+  virtual_lines = false, -- Text shows up underneath the line, with virtual lines
 
   -- Auto open the float, so you can easily read the errors when jumping with `[d` and `]d`
   jump = { float = true },
@@ -199,6 +190,8 @@ vim.keymap.set('n', '<leader>q', vim.diagnostic.setloclist, { desc = 'Open diagn
 -- NOTE: This won't work in all terminal emulators/tmux/etc. Try your own mapping
 -- or just use <C-\><C-n> to exit terminal mode
 vim.keymap.set('t', '<Esc><Esc>', '<C-\\><C-n>', { desc = 'Exit terminal mode' })
+
+vim.api.nvim_set_hl(0, 'Comment', { italic = true })
 
 -- Keybinds to make split navigation easier.
 --  Use CTRL+<hjkl> to switch between windows
@@ -254,6 +247,14 @@ rtp:prepend(lazypath)
 require('lazy').setup({
   -- NOTE: Plugins can be added via a link or github org/name. To run setup automatically, use `opts = {}`
   { 'NMAC427/guess-indent.nvim', opts = {} },
+  -- TODO: https://github.com/neovim/neovim/pull/35627
+  {
+    'mbbill/undotree',
+    init = function() vim.g.undotree_SetFocusWhenToggle = 1 end,
+    keys = {
+      { '<leader>u', vim.cmd.UndotreeToggle, desc = 'Toggle [U]ndotree' },
+    },
+  },
 
   -- Alternatively, use `config = function() ... end` for full control over the configuration.
   -- If you prefer to call `setup` explicitly, use:
@@ -280,31 +281,64 @@ require('lazy').setup({
         topdelete = { text = '‾' },
         changedelete = { text = '~' },
       },
+      on_attach = function(bufnr)
+        local group = vim.api.nvim_create_augroup('plugins.gitsigns', { clear = true })
+        local gitsigns = require 'gitsigns'
+
+        vim.api.nvim_create_autocmd('OptionSet', {
+          pattern = 'diff',
+          group = group,
+          desc = 'Close gitsigns diff',
+          callback = function()
+            vim.keymap.set('n', 'q', function()
+              local has_diff = vim.wo.diff
+              if not has_diff then return 'q' end
+
+              for _, win in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+                local buf = vim.api.nvim_win_get_buf(win)
+                local bufname = vim.api.nvim_buf_get_name(buf)
+                if bufname:find '^gitsigns://' then
+                  vim.schedule(function() vim.api.nvim_win_close(win, true) end)
+                  return ''
+                end
+              end
+
+              return 'q'
+            end, { buffer = buffernr })
+          end,
+        })
+
+        local function map(mode, l, r, opts)
+          opts = opts or {}
+          opts.buffer = bufnr
+          vim.keymap.set(mode, l, r, opts)
+        end
+
+        -- Navigation
+        map('n', ']c', function()
+          if vim.wo.diff then
+            vim.cmd.normal { ']c', bang = true }
+          else
+            gitsigns.nav_hunk 'next'
+          end
+        end, { desc = 'Jump to next git [c]hange' })
+
+        map('n', '[c', function()
+          if vim.wo.diff then
+            vim.cmd.normal { '[c', bang = true }
+          else
+            gitsigns.nav_hunk 'prev'
+          end
+        end, { desc = 'Jump to previous git [c]hange' })
+
+        -- visual mode
+        map('v', '<leader>hr', function() gitsigns.reset_hunk { vim.fn.line '.', vim.fn.line 'v' } end, { desc = 'git [r]eset hunk' })
+        -- normal mode
+        map('n', '<leader>hd', gitsigns.diffthis, { desc = 'git [d]diff hunk' })
+        map('n', '<leader>hr', gitsigns.reset_hunk, { desc = 'git [r]eset hunk' })
+        map('n', '<leader>hp', gitsigns.preview_hunk, { desc = 'git [p]review hunk' })
+      end,
     },
-  },
-  {
-    'ThePrimeagen/harpoon',
-    branch = 'harpoon2',
-    dependencies = { 'nvim-lua/plenary.nvim' },
-    config = function()
-      local harpoon = require 'harpoon'
-      harpoon:setup()
-      vim.keymap.set('n', '<leader>ha', function()
-        harpoon:list():add()
-      end, { desc = '[H]arpoon [A]dd current file' })
-      vim.keymap.set('n', '<leader>h', function()
-        harpoon.ui:toggle_quick_menu(harpoon:list())
-      end, { desc = '[H]arpoon Menu' })
-      function nmap(key, n)
-        vim.keymap.set('n', key, function()
-          harpoon:list():select(n)
-        end)
-      end
-      nmap('<A-j>', 1)
-      nmap('<A-k>', 2)
-      nmap('<A-l>', 3)
-      nmap('<A-;>', 4)
-    end,
   },
   -- NOTE: Plugins can also be configured to run Lua code when they are loaded.
   --
@@ -447,7 +481,7 @@ require('lazy').setup({
           -- Jump to the definition of the word under your cursor.
           -- This is where a variable was first declared, or where a function is defined, etc.
           -- To jump back, press <C-t>.
-          vim.keymap.set('n', 'grd', builtin.lsp_definitions, { buffer = buf, desc = '[G]oto [D]efinition' })
+          vim.keymap.set('n', 'gd', builtin.lsp_definitions, { buffer = buf, desc = '[G]oto [D]efinition' })
 
           -- Fuzzy find all the symbols in your current document.
           -- Symbols are things like variables, functions, types, etc.
@@ -501,6 +535,7 @@ require('lazy').setup({
       -- Mason must be loaded before its dependents so we need to set it up here.
       -- NOTE: `opts = {}` is the same as calling `require('mason').setup({})`
       { 'mason-org/mason.nvim', opts = {} },
+      { 'mason-org/mason-lspconfig.nvim', opts = {} },
       'WhoIsSethDaniel/mason-tool-installer.nvim',
 
       -- Useful status updates for LSP.
@@ -587,6 +622,7 @@ require('lazy').setup({
           --
           -- This may be unwanted, since they displace some of your code
           if client and client:supports_method('textDocument/inlayHint', event.buf) then
+            vim.lsp.inlay_hint.enable(true)
             map('<leader>th', function() vim.lsp.inlay_hint.enable(not vim.lsp.inlay_hint.is_enabled { bufnr = event.buf }) end, '[T]oggle Inlay [H]ints')
           end
         end,
@@ -604,7 +640,8 @@ require('lazy').setup({
       local servers = {
         clangd = {},
         -- gopls = {},
-        pyright = {},
+        basedpyright = {},
+        ruff = {},
         rust_analyzer = {},
         --
         -- Some languages (like typescript) have entire language plugins that can be useful:
@@ -614,6 +651,8 @@ require('lazy').setup({
         -- ts_ls = {},
       }
 
+      servers = vim.tbl_deep_extend('force', servers, load_config('$HOME/work/redox', '$HOME/work/redox/config.nvim.lua'))
+
       -- Ensure the servers and tools above are installed
       --
       -- To check the current status of installed tools and/or manually install
@@ -621,12 +660,17 @@ require('lazy').setup({
       --    :Mason
       --
       -- You can press `g?` for help in this menu.
-      local ensure_installed = vim.tbl_keys(servers or {})
-      vim.list_extend(ensure_installed, {
+      local ensure_installed = {
         'lua_ls', -- Lua Language server
         'stylua', -- Used to format Lua code
+        'clangd',
+
+        -- Python
+        'basedpyright',
+        'ruff',
+
         -- You can add other tools here that you want Mason to install
-      })
+      }
 
       require('mason-tool-installer').setup { ensure_installed = ensure_installed }
 
@@ -811,16 +855,16 @@ require('lazy').setup({
     -- change the command in the config to whatever the name of that colorscheme is.
     --
     -- If you want to see what colorschemes are already installed, you can use `:Telescope colorscheme`.
-    'navarasu/onedark.nvim',
+    'ellisonleao/gruvbox.nvim',
     priority = 1000, -- Make sure to load this before all the other start plugins.
     config = function()
       -- Load the colorscheme here.
       -- Like many other themes, this one has different styles, and you could load
       -- any other, such as 'tokyonight-storm', 'tokyonight-moon', or 'tokyonight-day'.
-      require('onedark').setup {
-        style = 'warm',
-      }
-      vim.cmd.colorscheme 'onedark'
+      -- require('everforest').setup {
+      --   style = 'hard',
+      -- }
+      vim.cmd.colorscheme 'gruvbox'
     end,
   },
 
